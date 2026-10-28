@@ -5,7 +5,7 @@
 ## 功能特性
 
 - ✅ **专业监控**：原生支持 StatusPage.io 架构的官方状态 API（GitHub、OpenAI、Cloudflare、Moonshot AI 等）
-- ✅ **国内服务**：支持阿里云事件接口，以及 DeepSeek API、哔哩哔哩、QQ 机器人开放平台等无状态页服务的 HTTP 探测
+- ✅ **国内服务**：支持阿里云事件接口、DeepSeek 官方状态页，以及哔哩哔哩、QQ 机器人开放平台等服务的 HTTP 探测
 - ✅ **差异通知**：通知优先展示"本次变化"（新增/解决/状态更新/维护变化），一眼看清变了什么；未变化内容不再整页复读
 - ✅ **分级推送**：推送灵敏度三档可调——低（仅严重故障）、中（影响升级+恢复+新增事件）、高（全部变化）
 - ✅ **AI 翻译**（可选）：通知中的英文事件标题/说明自动翻译为中文，模型提供商可在 WebUI 中自选
@@ -21,8 +21,9 @@
 | 类型 | 说明 | 适用服务 |
 |:-----|:-----|:--------|
 | `statuspage` | StatusPage.io 标准 JSON API | GitHub、OpenAI、Cloudflare、Moonshot AI (Kimi) 等 |
+| `flashduty` | 官方状态页的 Flashduty 当前事件 JSON，默认全部组件，可按 ID 筛选 | DeepSeek |
 | `aliyun` | 阿里云官方事件接口 | 阿里云 |
-| `probe` | 通用 HTTP 探测，任何 HTTP 响应视为在线 | DeepSeek API、哔哩哔哩、Steam、QQ 机器人开放平台等 |
+| `probe` | 通用 HTTP 探测，任何 HTTP 响应视为在线 | 哔哩哔哩、Steam、QQ 机器人开放平台等 |
 | `rss` | RSS/Atom 订阅源 | 提供状态 RSS 的服务 |
 | `steamstat` | SteamStat.us JSON（已被 Cloudflare 拦截，保留兼容） | 不推荐 |
 
@@ -35,7 +36,7 @@
 
 | 分组 | 包含服务（示例） |
 |:-----|:----------------|
-| 国内服务 | Moonshot AI (Kimi)、DeepSeek API、智谱AI、硅基流动、哔哩哔哩、QQ机器人开放平台、微信公众平台、阿里云 |
+| 国内服务 | Moonshot AI (Kimi)、DeepSeek、智谱AI、硅基流动、哔哩哔哩、QQ机器人开放平台、微信公众平台、阿里云 |
 | AI 服务 | OpenAI |
 | 云服务 | Cloudflare、DigitalOcean、Vercel、Linode |
 | 开发运维 | GitHub、NPM、PyPI、CircleCI、Sentry、Datadog、Atlassian |
@@ -60,7 +61,7 @@
 | 指令                   | 说明                                   |
 |:-----------------------|:---------------------------------------|
 | `/servicestatus`       | 获取所有已启用服务的当前概览状态       |
-| `/servicetest <服务名>` | 强制触发一次指定服务的状态检查（用于调试），服务名支持配置项标识符（如 `deepseek_api`）或显示名（如 `DeepSeek API`） |
+| `/servicetest <服务名>` | 强制触发一次指定服务的状态检查（用于调试），推荐使用稳定服务标识（如 `deepseek_api`，界面显示为 `DeepSeek`） |
 | `/servicewatch`        | 查看当前会话的订阅列表（仅管理员）     |
 | `/servicewatch <服务名\|all>` | 订阅指定服务（或全部服务）到当前会话（仅管理员） |
 | `/servicewatch off <服务名\|all>` | 退订指定服务（或全部服务）（仅管理员） |
@@ -109,8 +110,32 @@
 
 无需修改任何 Python 代码。若服务有官方 StatusPage（通常在状态页域名后拼 `/api/v2/summary.json` 验证），直接使用 `statuspage` 类型；否则可用 `probe` 类型探测任意 URL。
 
+DeepSeek 使用 [官方状态页](https://status.deepseek.com/) 实际读取的
+`/api/status-page/6410630422455/summary/active` 接口。它不兼容 StatusPage.io。
+界面、命令结果和通知统一显示为 **DeepSeek**。
+`flashduty` 默认监控官方页面全部组件；可选 `component_ids` 列表用于限定范围，
+省略、留空列表或设为 `null` 均表示全部组件。DeepSeek 默认不配置 ID，包含 API、
+网页对话、搜索与上传等组件。填写 ID 时，组件改名不影响筛选；任一已配置 ID
+不存在会显示采集失败，需核对 `services.json`。仅调整范围且实际状态未变时不推送。
+
+采集超时、HTTP 错误、非法 JSON、未知状态或结构变化不会触发 DeepSeek 故障/恢复
+通知，不覆盖上次有效基线，也不计为服务停机；不自动回退 HTTP 探测。管理页此时
+显示“官方状态页采集失败（监控组件状态未知）”，不展示旧状态作为当前状态。
+只有完整有效的当前事件列表才用于判断事件消失/恢复。
+目前仅适配 incident；相关维护事件会显示采集失败，不提供 DeepSeek 维护提醒。
+该读取接口是公开页面内部使用的接口，尚未确认正式兼容性承诺。
+
 ## 升级说明
 
+- **DeepSeek 官方状态页迁移**：保留 `deepseek_api`、`enable_deepseek_api` 和会话订阅。
+  类型由 `probe` 切换为 `flashduty` 后，后台首次有效采集静默建立新基线；查询、测试
+  命令和管理页刷新不建立或更新后台基线。新可用率历史单独存于
+  `service_watcher_uptime_deepseek_api_flashduty`，旧探测历史保留，不与官方状态统计混合。
+  7/30 天数值表示本插件成功采集样本的正常比例，不是官方历史可用率；采集失败样本
+  不进入分母，窗口内无有效样本时不显示比例；不足完整周期时只统计已有样本。
+  DeepSeek 界面显示为“近7/30天采样正常率”，与官方历史可用率区分。迁移不改变其他类型的统计规则。
+- **显示名称**：统一为 `DeepSeek`，命令可使用 `DeepSeek` 或稳定标识 `deepseek_api`。
+  Flashduty 基线使用稳定服务标识保存，显示名变更不影响开关、订阅或现有基线；不复用旧 probe 基线。
 - **v0.2.x → v0.3.0**：状态缓存 key 已按服务类型区分，升级后所有服务会静默重新初始化一次（不会推送误报）；Steam 监控数据源已更换（见上）。
 - **v0.4.x → v0.5.0**：新增差异通知与推送灵敏度、AI 翻译、`/servicewatch` 订阅、维护提醒、每日摘要与可用率统计。差异通知依赖上次快照，升级后**第一次**变化通知仍为全量格式，此后自动切换为差异格式；旧配置无需迁移，新增配置项均有默认值。
 
