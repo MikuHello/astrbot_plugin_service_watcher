@@ -604,7 +604,7 @@ class ServiceWatcher(Star):
         # 无参数 / list：显示当前会话订阅列表
         if action in ("", "list", "列表", "状态"):
             subscribed = await subscriptions.list_for(star, umo)
-            names = [self.services[k].name for k in subscribed if k in self.services] or []
+            names = [service.name for service in self.services.values() if service.key in subscribed]
             lines = ["📡 当前会话的服务订阅", ""]
             if names:
                 lines.extend(f"• {name}" for name in names)
